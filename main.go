@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"strings"
 )
@@ -28,6 +30,86 @@ var (
 type Task struct {
 	Title    string
 	Estimate int
+}
+
+// インターフェース 中でメソッドを定義(引数なし、戻り値int)
+type controller interface {
+	speedUp() int
+	speedDown() int
+}
+type vehicle struct {
+	speed      int
+	enginPower int
+}
+type bycycle struct {
+	speed      int
+	humanPower int
+}
+
+type items struct {
+	price float32
+}
+
+// speedの値を更新するためにポインタレシーバーを使う
+func (v *vehicle) speedUp() int {
+	v.speed += 10 * v.enginPower
+	return v.speed
+}
+
+func (v *vehicle) speedDown() int {
+	v.speed -= 5 * v.enginPower
+	return v.speed
+}
+
+func (v *bycycle) speedUp() int {
+	v.speed += 10 * v.humanPower
+	return v.speed
+}
+
+func (v *bycycle) speedDown() int {
+	v.speed -= 5 * v.humanPower
+	return v.speed
+}
+
+func speedUpAndDown(c controller) {
+	fmt.Println("speed!", c.speedUp())
+	fmt.Println("speed!", c.speedDown())
+}
+
+func checkType(i any) {
+	switch i.(type) {
+	case nil:
+		fmt.Println("nil")
+	case int:
+		fmt.Println("int")
+	case string:
+		fmt.Println("string")
+	default:
+		fmt.Println("unknown")
+	}
+}
+
+var ErrCustom = errors.New("not found")
+
+// ~によって定義した型も引数に指定できるようになる
+type customConstraints interface {
+	~int | int16 | float32 | float64 | string
+}
+type NewInt int
+
+func add[T customConstraints](x, y T) T {
+	return x + y
+}
+
+// test用
+func AddTest(x, y int) int {
+	return x + y
+}
+func Divied(x, y int) float32 {
+	if y == 0 {
+		return 0.
+	}
+	return float32(x) / float32(y)
 }
 
 func main() {
@@ -194,38 +276,144 @@ func main() {
 	// fmt.Println("task1 value Pointer", task1)
 
 	// ### function / closure ###
-	funcDefer()
-	files := []string{"file1.csv", "file2.csv", "file3.csv"}
-	fmt.Println(trimExtension(files...))
-	name, err := fileChecker("file.txt")
+	// funcDefer()
+	// files := []string{"file1.csv", "file2.csv", "file3.csv"}
+	// fmt.Println(trimExtension(files...))
+	// name, err := fileChecker("file.txt")
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+	// fmt.Println(name)
+	// // 無名関数
+	// i := 1
+	// // 即座に実行するには最後に()をつける
+	// func(i int) {
+	// 	fmt.Println(i)
+	// }(i)
+	// // 即座に実行させない場合は、変数に代入してから実行する
+	// f1 := func(i int) int {
+	// 	return i + 1
+	// }
+	// fmt.Println(f1(i))
+	// // 無名関数を関数の引数として渡す
+	// f2 := func(file string) string {
+	// 	return file + ".csv"
+	// }
+	// addExt(f2, "file1")
+	// // 無名関数をreturnで返すこともできる 使い道なかなかないから実装はしない
+	// // ここからclosure
+	// f4 := countUp()
+	// for i := 1; i <= 5; i++ {
+	// 	v := f4(2)
+	// 	fmt.Printf("%v\n", v)
+	// }
+
+	// ### interface(上部) ###
+	// v := &vehicle{0, 5}
+	// speedUpAndDown(v)
+	// b := &bycycle{0, 5}
+	// speedUpAndDown(b)
+	// // any型も使える 空のinterfaceと同じ
+	// var i1 interface{}
+	// var i2 any
+	// fmt.Printf("%[1]v %[1]T %v\n", i1, unsafe.Sizeof(i1))
+	// fmt.Printf("%[1]v %[1]T %v\n", i2, unsafe.Sizeof(i2))
+	// checkType(i2)
+	// i2 = 1
+	// checkType(i2)
+	// i2 = "string"
+	// checkType(i2)
+
+	// ### if / for / switch ###
+	// a := -1
+	// if a == 0 {
+	// 	fmt.Println("zero")
+	// } else if a > 0 {
+	// 	fmt.Println("positive")
+	// } else {
+	// 	fmt.Println("negative")
+	// }
+	// for i := 0; i < 5; i++ {
+	// 	fmt.Println(i)
+	// }
+	// forを省略すると無限ループになる
+	// var i int
+	// for {
+	// 	if i > 3 {
+	// 		break
+	// 	}
+	// 	fmt.Println(i)
+	// 	i += 1
+	// 	time.Sleep(300 * time.Millisecond)
+	// }
+	// loop:
+	// 	for i := 0; i < 10; i++ {
+	// 		switch i {
+	// 		case 2:
+	// 			continue
+	// 		case 3:
+	// 			continue
+	// 		case 8:
+	// 			break loop
+	// 		default:
+	// 			fmt.Println(i)
+	// 		}
+	// 	}
+	// items := []items{
+	// 	{price: 10.},
+	// 	{price: 20.},
+	// 	{price: 30.},
+	// }
+	// // コピーが生成され、元の値は変更されない
+	// for _, item := range items {
+	// 	item.price *= 1.1
+	// }
+	// fmt.Println(items)
+	// // 元の値まで更新したい場合は
+	// for i := range items {
+	// 	items[i].price *= 1.1
+	// }
+	// fmt.Println(items)
+
+	// ### errors ###
+	// errorの型はポインタ型
+	// errorは同じ値でもメモリアドレスが違うので比較するとfalseになる
+	// err01 := errors.New("something wrong")
+	// err02 := errors.New("something wrong")
+	// fmt.Printf("%[1]p %[1]T %[1]v\n", err01)
+	// fmt.Println(err01.Error())
+	// fmt.Println(err01 == err02)
+	// // errメッセージをwrapする
+	// err2 := fmt.Errorf("wrap error: %w", ErrCustom)
+	// fmt.Println(err2)
+
+	// ### generics(上部で指定 複数の型を使えるようにする) ###
+	// fmt.Printf("%v\n", add(1, 2))
+	// fmt.Printf("%v\n", add(2.1, 2.1))
+	// fmt.Printf("%v\n", add("file", ".txt"))
+	// var i1, i2 NewInt = 3, 4
+	// fmt.Printf("%v\n", add(i1, i2))
+
+	// ### unit test ###
+	// x, y := 3, 5
+	// fmt.Printf("%v %v\n", AddTest(x, y), Divied(x, y))
+	// => 関数名から右クリックでテストが作成できる
+	// => テスト実行は、ターミナルで go test -v .
+
+	// ### logger ###
+	file, err := os.Create("log.txt")
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatalln(err)
 	}
-	fmt.Println(name)
-	// 無名関数
-	i := 1
-	// 即座に実行するには最後に()をつける
-	func(i int) {
-		fmt.Println(i)
-	}(i)
-	// 即座に実行させない場合は、変数に代入してから実行する
-	f1 := func(i int) int {
-		return i + 1
-	}
-	fmt.Println(f1(i))
-	// 無名関数を関数の引数として渡す
-	f2 := func(file string) string {
-		return file + ".csv"
-	}
-	addExt(f2, "file1")
-	// 無名関数をreturnで返すこともできる 使い道なかなかないから実装はしない
-	// ここからclosure
-	f4 := countUp()
-	for i := 1; i <= 5; i++ {
-		v := f4(2)
-		fmt.Printf("%v\n", v)
-	}
+	defer file.Close()
+	flags := log.Lshortfile
+	warnLogger := log.New(io.MultiWriter(file, os.Stderr), "WARN: ", flags)
+	errorLogger := log.New(io.MultiWriter(file, os.Stderr), "ERROR: ", flags)
+
+	warnLogger.Println("warn log")
+	errorLogger.Fatalln("error log")
+
 }
 
 // receiver 型にメソッドを定義する(taskにextendEstimateを定義)

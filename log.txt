@@ -1,0 +1,2 @@
+WARN: main.go:414: warn log
+ERROR: main.go:415: error log
