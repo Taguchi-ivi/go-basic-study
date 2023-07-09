@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"runtime/trace"
 	"sync"
 	"time"
@@ -100,21 +99,68 @@ func main() {
 	// fmt.Println("main func finish")
 	// goroutineリーク 受信側が送信されるまで待ち続けるため、メモリが解放されないことを言う
 	// 以下のようにgoroutineを作成すると、受信側が送信されるまで待ち続けるため、goroutineが終了しない
+	// ch1 := make(chan int)
+	// go func() {
+	// 	fmt.Println(<-ch1)
+	// }()
+	// // 下記の書き込みの処理がないとgoroutineリークが起きる
+	// ch1 <- 10
+	// fmt.Printf("num of working goroutines: %d\n", runtime.NumGoroutine())
+	// // バッファを指定することで、goroutineリークを防ぐことができる
+	// // バッファを指定すると、バッファの分だけ書き込みができる(バッファの分だけ読み込みを待たずに書き込みができる)
+	// // バッファを超える書き込み or 読み込みから書き込みの順番になると deadlock が起きる
+	// ch2 := make(chan int, 1)
+	// ch2 <- 2
+	// // ch2 <- 3
+	// fmt.Println(<-ch2)
+
+	// ### channel close, capsel, notification ###
+	// チャネルを閉じることで、チャネルに対する書き込みを禁止することができる
+	// ただしバッファがある場合は、バッファにある値を読み込み終わるまで読み込みを許可する その後は読み込みを禁止する
 	ch1 := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		fmt.Println(<-ch1)
 	}()
-	// 下記の書き込みの処理がないとgoroutineリークが起きる
 	ch1 <- 10
-	fmt.Printf("num of working goroutines: %d\n", runtime.NumGoroutine())
-	// バッファを指定することで、goroutineリークを防ぐことができる
-	// バッファを指定すると、バッファの分だけ書き込みができる(バッファの分だけ読み込みを待たずに書き込みができる)
-	// バッファを超える書き込み or 読み込みから書き込みの順番になると deadlock が起きる
-	ch2 := make(chan int, 1)
+	close(ch1)
+	v, ok := <-ch1
+	fmt.Println(v, ok)
+	wg.Wait()
+	ch2 := make(chan int, 2)
+	ch2 <- 1
 	ch2 <- 2
-	// ch2 <- 3
-	fmt.Println(<-ch2)
+	close(ch2)
+	v, ok = <-ch2
+	fmt.Println(v, ok)
+	v, ok = <-ch2
+	fmt.Println(v, ok)
+	v, ok = <-ch2
+	fmt.Println(v, ok)
 
+	ch3 := generateCountStream()
+	for v := range ch3 {
+		fmt.Println(v)
+	}
+	// データの値を持たない通知専用のチャネル
+	// closeすると deadlockが解除されて print処理がはじまる
+	nCh := make(chan struct{})
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			fmt.Printf("goroutine %v started\n", i)
+			<-nCh
+			fmt.Println(i)
+		}(i)
+	}
+	time.Sleep(2 * time.Second)
+	close(nCh)
+	fmt.Println("unblocked by manual close")
+	wg.Wait()
+	fmt.Println("finish")
 }
 
 func task(ctx context.Context, name string) {
@@ -127,4 +173,18 @@ func cTask(ctx context.Context, wg *sync.WaitGroup, name string) {
 	defer wg.Done()
 	time.Sleep(time.Second)
 	fmt.Println(name)
+}
+
+// カプセル化
+// 読み込み専用のチャネルを生産するための関数
+// 読み取り専用のチャネルだけにアクセスすることで、チャネルの生成、書き込み、クローズをカプセル化することができる
+func generateCountStream() <-chan int {
+	ch := make(chan int)
+	go func() {
+		defer close(ch)
+		for i := 0; i <= 5; i++ {
+			ch <- i
+		}
+	}()
+	return ch
 }
