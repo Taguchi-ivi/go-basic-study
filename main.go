@@ -117,48 +117,88 @@ func main() {
 	// ### channel close, capsel, notification ###
 	// チャネルを閉じることで、チャネルに対する書き込みを禁止することができる
 	// ただしバッファがある場合は、バッファにある値を読み込み終わるまで読み込みを許可する その後は読み込みを禁止する
-	ch1 := make(chan int)
+	// ch1 := make(chan int)
+	// var wg sync.WaitGroup
+	// wg.Add(1)
+	// go func() {
+	// 	defer wg.Done()
+	// 	fmt.Println(<-ch1)
+	// }()
+	// ch1 <- 10
+	// close(ch1)
+	// v, ok := <-ch1
+	// fmt.Println(v, ok)
+	// wg.Wait()
+	// ch2 := make(chan int, 2)
+	// ch2 <- 1
+	// ch2 <- 2
+	// close(ch2)
+	// v, ok = <-ch2
+	// fmt.Println(v, ok)
+	// v, ok = <-ch2
+	// fmt.Println(v, ok)
+	// v, ok = <-ch2
+	// fmt.Println(v, ok)
+
+	// ch3 := generateCountStream()
+	// for v := range ch3 {
+	// 	fmt.Println(v)
+	// }
+	// // データの値を持たない通知専用のチャネル
+	// // closeすると deadlockが解除されて print処理がはじまる
+	// nCh := make(chan struct{})
+	// for i := 0; i < 5; i++ {
+	// 	wg.Add(1)
+	// 	go func(i int) {
+	// 		defer wg.Done()
+	// 		fmt.Printf("goroutine %v started\n", i)
+	// 		<-nCh
+	// 		fmt.Println(i)
+	// 	}(i)
+	// }
+	// time.Sleep(2 * time.Second)
+	// close(nCh)
+	// fmt.Println("unblocked by manual close")
+	// wg.Wait()
+	// fmt.Println("finish")
+
+	// ### select with timeout context default ###
+	// selectを使うことで、複数のチャネルの受信ができるようになる
+	const byfSize = 3
+	ch1 := make(chan string, 1)
+	ch2 := make(chan string, 1)
 	var wg sync.WaitGroup
-	wg.Add(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		fmt.Println(<-ch1)
+		time.Sleep(500 * time.Millisecond)
+		ch1 <- "A"
 	}()
-	ch1 <- 10
-	close(ch1)
-	v, ok := <-ch1
-	fmt.Println(v, ok)
-	wg.Wait()
-	ch2 := make(chan int, 2)
-	ch2 <- 1
-	ch2 <- 2
-	close(ch2)
-	v, ok = <-ch2
-	fmt.Println(v, ok)
-	v, ok = <-ch2
-	fmt.Println(v, ok)
-	v, ok = <-ch2
-	fmt.Println(v, ok)
-
-	ch3 := generateCountStream()
-	for v := range ch3 {
-		fmt.Println(v)
+	go func() {
+		defer wg.Done()
+		time.Sleep(800 * time.Millisecond)
+		ch2 <- "B"
+	}()
+	// どちらかの値がnilになった時ループを抜ける
+loop:
+	for ch1 != nil || ch2 != nil {
+		select {
+		case <-ctx.Done():
+			fmt.Println("timeout")
+			break loop
+		case v := <-ch1:
+			fmt.Println(v)
+			ch1 = nil
+		case v := <-ch2:
+			fmt.Println(v)
+			ch2 = nil
+		default:
+			fmt.Println("no msg arrived")
+		}
 	}
-	// データの値を持たない通知専用のチャネル
-	// closeすると deadlockが解除されて print処理がはじまる
-	nCh := make(chan struct{})
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			fmt.Printf("goroutine %v started\n", i)
-			<-nCh
-			fmt.Println(i)
-		}(i)
-	}
-	time.Sleep(2 * time.Second)
-	close(nCh)
-	fmt.Println("unblocked by manual close")
 	wg.Wait()
 	fmt.Println("finish")
 }
