@@ -164,43 +164,59 @@ func main() {
 
 	// ### select with timeout context default ###
 	// selectを使うことで、複数のチャネルの受信ができるようになる
-	const byfSize = 3
-	ch1 := make(chan string, 1)
-	ch2 := make(chan string, 1)
-	var wg sync.WaitGroup
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
+	// 	const byfSize = 3
+	// 	ch1 := make(chan string, 1)
+	// 	ch2 := make(chan string, 1)
+	// 	var wg sync.WaitGroup
+	// 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	// 	defer cancel()
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		time.Sleep(500 * time.Millisecond)
-		ch1 <- "A"
-	}()
-	go func() {
-		defer wg.Done()
-		time.Sleep(800 * time.Millisecond)
-		ch2 <- "B"
-	}()
-	// どちらかの値がnilになった時ループを抜ける
-loop:
-	for ch1 != nil || ch2 != nil {
-		select {
-		case <-ctx.Done():
-			fmt.Println("timeout")
-			break loop
-		case v := <-ch1:
-			fmt.Println(v)
-			ch1 = nil
-		case v := <-ch2:
-			fmt.Println(v)
-			ch2 = nil
-		default:
-			fmt.Println("no msg arrived")
-		}
-	}
+	// 	wg.Add(2)
+	// 	go func() {
+	// 		defer wg.Done()
+	// 		time.Sleep(500 * time.Millisecond)
+	// 		ch1 <- "A"
+	// 	}()
+	// 	go func() {
+	// 		defer wg.Done()
+	// 		time.Sleep(800 * time.Millisecond)
+	// 		ch2 <- "B"
+	// 	}()
+	// 	// どちらかの値がnilになった時ループを抜ける
+	// loop:
+	// 	for ch1 != nil || ch2 != nil {
+	// 		select {
+	// 		case <-ctx.Done():
+	// 			fmt.Println("timeout")
+	// 			break loop
+	// 		case v := <-ch1:
+	// 			fmt.Println(v)
+	// 			ch1 = nil
+	// 		case v := <-ch2:
+	// 			fmt.Println(v)
+	// 			ch2 = nil
+	// 		default:
+	// 			fmt.Println("no msg arrived")
+	// 		}
+	// 	}
+	// 	wg.Wait()
+	// 	fmt.Println("finish")
+
+	// ### select receive continuous data ###
+	// セレクト文を用いて、複数のチャネルから連続的にデータを受信する
+	const bufSize = 5
+	ch1 := make(chan int, bufSize)
+	ch2 := make(chan int, bufSize)
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
+	defer cancel()
+	wg.Add(3)
+	go countProducer(&wg, ch1, bufSize, 50)
+	go countProducer(&wg, ch2, bufSize, 500)
+	go countConsumer(ctx, &wg, ch1, ch2)
 	wg.Wait()
 	fmt.Println("finish")
+
 }
 
 func task(ctx context.Context, name string) {
@@ -227,4 +243,36 @@ func generateCountStream() <-chan int {
 		}
 	}()
 	return ch
+}
+
+func countProducer(wg *sync.WaitGroup, ch chan<- int, size int, sleep int) {
+	defer wg.Done()
+	defer close(ch)
+	for i := 0; i < size; i++ {
+		time.Sleep(time.Duration(sleep) * time.Millisecond)
+		ch <- i
+	}
+}
+func countConsumer(ctx context.Context, wg *sync.WaitGroup, ch1 <-chan int, ch2 <-chan int) {
+	defer wg.Done()
+loop:
+	for ch1 != nil || ch2 != nil {
+		select {
+		case <-ctx.Done():
+			fmt.Println(ctx.Err())
+			break loop
+		case v, ok := <-ch1:
+			if !ok {
+				ch1 = nil
+				continue
+			}
+			fmt.Println("ch1", v)
+		case v, ok := <-ch2:
+			if !ok {
+				ch2 = nil
+				break
+			}
+			fmt.Println("ch2", v)
+		}
+	}
 }
