@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime/trace"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,6 +18,9 @@ import (
 
 // 作成されたtrace.outを開く
 // go tool trace trace.out
+
+// データが競合(データレース)しているか確認する
+// go run -race main.go
 
 func main() {
 
@@ -204,17 +208,64 @@ func main() {
 
 	// ### select receive continuous data ###
 	// セレクト文を用いて、複数のチャネルから連続的にデータを受信する
-	const bufSize = 5
-	ch1 := make(chan int, bufSize)
-	ch2 := make(chan int, bufSize)
+	// const bufSize = 5
+	// ch1 := make(chan int, bufSize)
+	// ch2 := make(chan int, bufSize)
+	// var wg sync.WaitGroup
+	// ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
+	// defer cancel()
+	// wg.Add(3)
+	// go countProducer(&wg, ch1, bufSize, 50)
+	// go countProducer(&wg, ch2, bufSize, 500)
+	// go countConsumer(ctx, &wg, ch1, ch2)
+	// wg.Wait()
+	// fmt.Println("finish")
+
+	// ### mutex + atomic ###
+	// データの競合(データレース)を防ぐために、排他制御を行う
+	// var wg sync.WaitGroup
+	// var i int
+	// var mu sync.Mutex
+	// wg.Add(2)
+	// go func() {
+	// 	defer wg.Done()
+	// 	mu.Lock()
+	// 	defer mu.Unlock()
+	// 	i++
+	// }()
+	// go func() {
+	// 	defer wg.Done()
+	// 	mu.Lock()
+	// 	defer mu.Unlock()
+	// 	i++
+	// }()
+	// wg.Wait()
+	// fmt.Println(i)
+	// rwMutex
+	// var wg sync.WaitGroup
+	// var rwMu sync.RWMutex
+	// var c int
+	// wg.Add(4)
+	// go write(&rwMu, &wg, &c)
+	// go read(&rwMu, &wg, &c)
+	// go read(&rwMu, &wg, &c)
+	// go read(&rwMu, &wg, &c)
+	// wg.Wait()
+	// fmt.Println("finish")
+	// atomic
 	var wg sync.WaitGroup
-	ctx, cancel := context.WithTimeout(context.Background(), 3000*time.Millisecond)
-	defer cancel()
-	wg.Add(3)
-	go countProducer(&wg, ch1, bufSize, 50)
-	go countProducer(&wg, ch2, bufSize, 500)
-	go countConsumer(ctx, &wg, ch1, ch2)
+	var c int64
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				atomic.AddInt64(&c, 1)
+			}
+		}()
+	}
 	wg.Wait()
+	fmt.Println(c)
 	fmt.Println("finish")
 
 }
@@ -275,4 +326,25 @@ loop:
 			fmt.Println("ch2", v)
 		}
 	}
+}
+
+func read(mu *sync.RWMutex, wg *sync.WaitGroup, c *int) {
+	defer wg.Done()
+	time.Sleep(10 * time.Millisecond)
+	mu.RLock()
+	defer mu.RUnlock()
+	fmt.Println("read lock")
+	fmt.Println(*c)
+	time.Sleep(1 * time.Second)
+	fmt.Println("read unlock")
+}
+
+func write(mu *sync.RWMutex, wg *sync.WaitGroup, c *int) {
+	defer wg.Done()
+	mu.Lock()
+	defer mu.Unlock()
+	fmt.Println("write lock")
+	*c++
+	time.Sleep(1 * time.Second)
+	fmt.Println("write unlock")
 }
